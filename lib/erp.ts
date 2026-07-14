@@ -26,7 +26,7 @@ export type PurchaseOrder = {
   status: "Draft" | "Ordered" | "Partially Received" | "Received" | "Cancelled";
   orderDate: string;
   expectedDate: string;
-  lines: Array<{ productId: string; quantity: number; unitCost: number; received: number }>;
+  lines: Array<{ id: string; productId: string; quantity: number; unitCost: number; received: number }>;
 };
 
 export type Sale = {
@@ -104,7 +104,7 @@ export async function getErpData(): Promise<ErpData> {
       status: purchaseStatusLabel[po.status],
       orderDate: po.orderDate.toISOString().slice(0, 10),
       expectedDate: po.expectedDate.toISOString().slice(0, 10),
-      lines: po.lines.map((line) => ({ productId: line.productId, quantity: line.quantity, unitCost: Number(line.unitCost), received: line.received }))
+      lines: po.lines.map((line) => ({ id: line.id, productId: line.productId, quantity: line.quantity, unitCost: Number(line.unitCost), received: line.received }))
     })),
     sales: sales.map((sale) => ({
       id: sale.id,
