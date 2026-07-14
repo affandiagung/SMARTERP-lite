@@ -122,6 +122,7 @@ model StockMovement {
   type      StockMovementType
   reference String
   quantity  Int
+  unitCost  Decimal           @default(0) @db.Decimal(12, 2)
   createdAt DateTime          @default(now())
 
   @@index([productId, date])

@@ -10,6 +10,7 @@ This is intentionally not a generic admin template. The main hiring signal is th
 - Goods receipts create positive stock movements.
 - Sales shipments create negative stock movements.
 - Inventory reports are calculated from the stock ledger, not from a manually edited stock field.
+- Inventory value uses weighted average cost from stock movements, so receipts with different unit costs are valued correctly.
 
 ## Tech stack
 

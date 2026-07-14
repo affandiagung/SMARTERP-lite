@@ -56,17 +56,17 @@ const salesOrders = [
 ];
 
 const movements = [
-  { id: "m-001", date: "2026-07-01", productId: "p-001", type: "OPENING", reference: "Opening Balance", quantity: 52 },
-  { id: "m-002", date: "2026-07-01", productId: "p-002", type: "OPENING", reference: "Opening Balance", quantity: 105 },
-  { id: "m-003", date: "2026-07-01", productId: "p-003", type: "OPENING", reference: "Opening Balance", quantity: 340 },
-  { id: "m-004", date: "2026-07-01", productId: "p-004", type: "OPENING", reference: "Opening Balance", quantity: 64 },
-  { id: "m-005", date: "2026-07-01", productId: "p-005", type: "OPENING", reference: "Opening Balance", quantity: 58 },
-  { id: "m-006", date: "2026-07-13", productId: "p-003", type: "PURCHASE_RECEIPT", reference: "GRN-2026-0709", quantity: 500 },
-  { id: "m-007", date: "2026-07-13", productId: "p-004", type: "SALES_SHIPMENT", reference: "SO-2026-1031", quantity: -18 },
-  { id: "m-008", date: "2026-07-14", productId: "p-002", type: "PURCHASE_RECEIPT", reference: "GRN-2026-0712-A", quantity: 120 },
-  { id: "m-009", date: "2026-07-14", productId: "p-005", type: "PURCHASE_RECEIPT", reference: "GRN-2026-0712-A", quantity: 30 },
-  { id: "m-010", date: "2026-07-14", productId: "p-002", type: "SALES_SHIPMENT", reference: "SO-2026-1032", quantity: -52 },
-  { id: "m-011", date: "2026-07-14", productId: "p-005", type: "SALES_SHIPMENT", reference: "SO-2026-1032", quantity: -24 }
+  { id: "m-001", date: "2026-07-01", productId: "p-001", type: "OPENING", reference: "Opening Balance", quantity: 52, unitCost: 42 },
+  { id: "m-002", date: "2026-07-01", productId: "p-002", type: "OPENING", reference: "Opening Balance", quantity: 105, unitCost: 10 },
+  { id: "m-003", date: "2026-07-01", productId: "p-003", type: "OPENING", reference: "Opening Balance", quantity: 340, unitCost: 1.35 },
+  { id: "m-004", date: "2026-07-01", productId: "p-004", type: "OPENING", reference: "Opening Balance", quantity: 64, unitCost: 72 },
+  { id: "m-005", date: "2026-07-01", productId: "p-005", type: "OPENING", reference: "Opening Balance", quantity: 58, unitCost: 18 },
+  { id: "m-006", date: "2026-07-13", productId: "p-003", type: "PURCHASE_RECEIPT", reference: "GRN-2026-0709", quantity: 500, unitCost: 1.4 },
+  { id: "m-007", date: "2026-07-13", productId: "p-004", type: "SALES_SHIPMENT", reference: "SO-2026-1031", quantity: -18, unitCost: 72 },
+  { id: "m-008", date: "2026-07-14", productId: "p-002", type: "PURCHASE_RECEIPT", reference: "GRN-2026-0712-A", quantity: 120, unitCost: 11 },
+  { id: "m-009", date: "2026-07-14", productId: "p-005", type: "PURCHASE_RECEIPT", reference: "GRN-2026-0712-A", quantity: 30, unitCost: 18 },
+  { id: "m-010", date: "2026-07-14", productId: "p-002", type: "SALES_SHIPMENT", reference: "SO-2026-1032", quantity: -52, unitCost: 10.53 },
+  { id: "m-011", date: "2026-07-14", productId: "p-005", type: "SALES_SHIPMENT", reference: "SO-2026-1032", quantity: -24, unitCost: 18 }
 ];
 
 async function main() {

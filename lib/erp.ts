@@ -44,6 +44,7 @@ export type StockMovement = {
   type: "Opening" | "Purchase Receipt" | "Sales Shipment" | "Adjustment";
   reference: string;
   quantity: number;
+  unitCost: number;
 };
 
 export type ErpData = {
@@ -118,7 +119,8 @@ export async function getErpData(): Promise<ErpData> {
       productId: movement.productId,
       type: movementTypeLabel[movement.type],
       reference: movement.reference,
-      quantity: movement.quantity
+      quantity: movement.quantity,
+      unitCost: Number(movement.unitCost)
     }))
   };
 }

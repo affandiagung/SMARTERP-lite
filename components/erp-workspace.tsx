@@ -7,20 +7,24 @@ import {
   Boxes,
   CheckCircle2,
   ClipboardList,
+  Edit3,
   Factory,
   FileText,
   LogOut,
+  Menu,
   PackageCheck,
   Plus,
   ReceiptText,
+  Save,
   Search,
   ShieldCheck,
   ShoppingCart,
   Truck,
+  X,
   UserRound
 } from "lucide-react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { createProduct, createSupplier, login, logout } from "@/app/actions";
+import { createProduct, createPurchaseOrder, createSalesOrder, createStockReceipt, createSupplier, login, logout, updateProductReorderLevel } from "@/app/actions";
 import type { SessionUser } from "@/lib/auth";
 import { money, type ErpData, type Product, type StockMovement, type Supplier } from "@/lib/erp";
 
@@ -56,10 +60,11 @@ export default function ErpWorkspace({ initialData, initialUser }: { initialData
   const [route, setRoute] = useState<RouteKey>("dashboard");
   const [products, setProducts] = useState<Product[]>(initialData.products);
   const [suppliers, setSuppliers] = useState<Supplier[]>(initialData.suppliers);
-  const [purchaseOrders] = useState(initialData.purchaseOrders);
-  const [sales] = useState(initialData.sales);
-  const [movements] = useState(initialData.movements);
+  const [purchaseOrders, setPurchaseOrders] = useState(initialData.purchaseOrders);
+  const [sales, setSales] = useState(initialData.sales);
+  const [movements, setMovements] = useState(initialData.movements);
   const [message, setMessage] = useState("Use the demo credentials to enter the ERP workspace.");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   function handleLogout() {
     startLogoutTransition(async () => {
@@ -74,11 +79,13 @@ export default function ErpWorkspace({ initialData, initialUser }: { initialData
   const inventoryRows = useMemo(
     () =>
       products.map((product) => {
-        const stock = stockFor(product.id, movements);
+        const valuation = valuationFor(product.id, movements);
+        const stock = valuation.stock;
         return {
           ...product,
           stock,
-          value: stock * product.cost,
+          value: valuation.value,
+          averageCost: valuation.averageCost,
           status: stock <= product.reorderLevel ? "Reorder" : stock <= product.reorderLevel * 1.4 ? "Watch" : "Healthy"
         };
       }),
@@ -131,15 +138,16 @@ export default function ErpWorkspace({ initialData, initialUser }: { initialData
         </aside>
 
         <section className="min-w-0 flex-1">
-          <Header route={route} isAdmin={isAdmin} handleLogout={handleLogout} isLoggingOut={isLoggingOut} />
+          <Header route={route} isAdmin={isAdmin} handleLogout={handleLogout} isLoggingOut={isLoggingOut} mobileMenuOpen={mobileMenuOpen} setMobileMenuOpen={setMobileMenuOpen} />
+          {mobileMenuOpen && <MobileNav visibleNav={visibleNav} route={route} setRoute={setRoute} setMobileMenuOpen={setMobileMenuOpen} session={session} handleLogout={handleLogout} isLoggingOut={isLoggingOut} />}
           <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8">
             {!isAdmin && <ReadOnlyNotice />}
             {route === "dashboard" && <Dashboard inventoryRows={inventoryRows} totals={totals} suppliers={suppliers} />}
             {isAdmin && route === "products" && <ProductsAdmin products={products} setProducts={setProducts} inventoryRows={inventoryRows} />}
             {isAdmin && route === "suppliers" && <SuppliersAdmin suppliers={suppliers} setSuppliers={setSuppliers} />}
-            {isAdmin && route === "purchase" && <PurchaseAdmin purchaseOrders={purchaseOrders} suppliers={suppliers} />}
-            {isAdmin && route === "receipts" && <ReceiptsAdmin movements={movements} products={products} />}
-            {isAdmin && route === "sales" && <SalesAdmin inventoryRows={inventoryRows} sales={sales} />}
+            {isAdmin && route === "purchase" && <PurchaseAdmin purchaseOrders={purchaseOrders} setPurchaseOrders={setPurchaseOrders} suppliers={suppliers} products={products} />}
+            {isAdmin && route === "receipts" && <ReceiptsAdmin movements={movements} setMovements={setMovements} products={products} />}
+            {isAdmin && route === "sales" && <SalesAdmin inventoryRows={inventoryRows} sales={sales} setSales={setSales} products={products} setMovements={setMovements} movements={movements} />}
             {route === "reports" && <Reports inventoryRows={inventoryRows} totals={totals} movements={movements} products={products} />}
           </div>
         </section>
@@ -256,6 +264,19 @@ function ProductsAdmin({ products, setProducts, inventoryRows }: { products: Pro
   const [draft, setDraft] = useState({ sku: "NEW-SKU-06", name: "Warehouse Scanner", category: "Equipment", unit: "pcs", reorderLevel: 12, cost: 88, price: 145 });
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("category");
+
+  const categories = ["all", ...Array.from(new Set(inventoryRows.map((row) => row.category)))];
+  const visibleRows = inventoryRows
+    .filter((row) => categoryFilter === "all" || row.category === categoryFilter)
+    .filter((row) => statusFilter === "all" || row.status === statusFilter)
+    .sort((a, b) => {
+      if (sortBy === "value") return b.value - a.value;
+      if (sortBy === "status") return statusRank(a.status) - statusRank(b.status);
+      return a.category.localeCompare(b.category) || a.name.localeCompare(b.name);
+    });
 
   function addProduct() {
     setError("");
@@ -269,24 +290,30 @@ function ProductsAdmin({ products, setProducts, inventoryRows }: { products: Pro
     });
   }
   return (
-    <AdminSection title="Product Management" subtitle="CRUD-style master data area for SKUs, pricing, units, and reorder levels.">
+    <AdminSection title="Product Management" subtitle="Master data for SKUs. Stock is not typed here; stock changes are posted through Goods Receipt and Sales.">
+      <InfoStrip title="How product status and value work" text="Status is calculated automatically from stock compared with reorder level. Inventory Value uses weighted average cost from stock movements, so different receipt prices are handled correctly." />
       <FormGrid>
         <Input label="SKU" value={draft.sku} onChange={(value) => setDraft({ ...draft, sku: value })} />
         <Input label="Name" value={draft.name} onChange={(value) => setDraft({ ...draft, name: value })} />
         <Input label="Category" value={draft.category} onChange={(value) => setDraft({ ...draft, category: value })} />
         <Input label="Unit" value={draft.unit} onChange={(value) => setDraft({ ...draft, unit: value })} />
-        <Input label="Reorder" value={String(draft.reorderLevel)} onChange={(value) => setDraft({ ...draft, reorderLevel: Number(value) || 0 })} />
+        <Input label="Reorder level" value={String(draft.reorderLevel)} onChange={(value) => setDraft({ ...draft, reorderLevel: Number(value) || 0 })} />
         <Input label="Cost" value={String(draft.cost)} onChange={(value) => setDraft({ ...draft, cost: Number(value) || 0 })} />
       </FormGrid>
       <button className="mt-4 inline-flex h-10 items-center gap-2 rounded bg-moss px-4 text-sm font-semibold text-white disabled:opacity-60" disabled={isPending} onClick={addProduct} type="button"><Plus size={17} /> {isPending ? "Saving..." : "Add product"}</button>
       {error && <p className="mt-3 rounded bg-clay/10 px-3 py-2 text-sm text-clay">{error}</p>}
-      <div className="mt-6"><InventoryTable inventoryRows={inventoryRows} /></div>
+      <div className="mt-6 grid gap-3 rounded border border-ink/10 bg-paper p-4 md:grid-cols-3">
+        <Select label="Filter category" value={categoryFilter} options={categories.map((category) => ({ label: category === "all" ? "All categories" : category, value: category }))} onChange={setCategoryFilter} />
+        <Select label="Filter status" value={statusFilter} options={["all", "Reorder", "Watch", "Healthy"].map((status) => ({ label: status === "all" ? "All statuses" : status, value: status }))} onChange={setStatusFilter} />
+        <Select label="Sort by" value={sortBy} options={[{ label: "Category", value: "category" }, { label: "Inventory value", value: "value" }, { label: "Status priority", value: "status" }]} onChange={setSortBy} />
+      </div>
+      <div className="mt-6"><InventoryTable inventoryRows={visibleRows} editableReorder products={products} setProducts={setProducts} /></div>
     </AdminSection>
   );
 }
 
 function SuppliersAdmin({ suppliers, setSuppliers }: { suppliers: Supplier[]; setSuppliers: (suppliers: Supplier[]) => void }) {
-  const [draft, setDraft] = useState({ name: "Prime Logistics FZCO", contact: "Layla Noor", email: "layla@prime.example", paymentTerms: "Net 30", reliability: 93 });
+  const [draft, setDraft] = useState({ name: "Prime Logistics FZCO", contact: "Layla Noor", email: "layla@prime.example", paymentTerms: "Standard", reliability: 90 });
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
 
@@ -302,12 +329,11 @@ function SuppliersAdmin({ suppliers, setSuppliers }: { suppliers: Supplier[]; se
     });
   }
   return (
-    <AdminSection title="Supplier Management" subtitle="Maintain supplier contacts, terms, and reliability score.">
+    <AdminSection title="Supplier Management" subtitle="Maintain supplier contacts used when creating purchase orders.">
       <FormGrid>
         <Input label="Supplier" value={draft.name} onChange={(value) => setDraft({ ...draft, name: value })} />
         <Input label="Contact" value={draft.contact} onChange={(value) => setDraft({ ...draft, contact: value })} />
         <Input label="Email" value={draft.email} onChange={(value) => setDraft({ ...draft, email: value })} />
-        <Input label="Terms" value={draft.paymentTerms} onChange={(value) => setDraft({ ...draft, paymentTerms: value })} />
       </FormGrid>
       <button className="mt-4 inline-flex h-10 items-center gap-2 rounded bg-moss px-4 text-sm font-semibold text-white disabled:opacity-60" disabled={isPending} onClick={addSupplier} type="button"><Plus size={17} /> {isPending ? "Saving..." : "Add supplier"}</button>
       {error && <p className="mt-3 rounded bg-clay/10 px-3 py-2 text-sm text-clay">{error}</p>}
@@ -316,16 +342,66 @@ function SuppliersAdmin({ suppliers, setSuppliers }: { suppliers: Supplier[]; se
   );
 }
 
-function PurchaseAdmin({ purchaseOrders, suppliers }: { purchaseOrders: ErpData["purchaseOrders"]; suppliers: Supplier[] }) {
-  return <AdminSection title="Purchase Orders" subtitle="Create and monitor supplier purchase orders."><TransactionTable title="Open Purchase Orders" rows={purchaseOrders.map((po) => ({ id: po.id, party: supplierName(po.supplierId, suppliers), date: po.expectedDate, status: po.status, amount: po.lines.reduce((sum, line) => sum + line.quantity * line.unitCost, 0) }))} /></AdminSection>;
+function PurchaseAdmin({ purchaseOrders, setPurchaseOrders, suppliers, products }: { purchaseOrders: ErpData["purchaseOrders"]; setPurchaseOrders: (purchaseOrders: ErpData["purchaseOrders"]) => void; suppliers: Supplier[]; products: Product[] }) {
+  const [draft, setDraft] = useState({ id: `PO-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`, supplierId: suppliers[0]?.id ?? "", productId: products[0]?.id ?? "", quantity: 10, unitCost: products[0]?.cost ?? 0, expectedDate: new Date().toISOString().slice(0, 10) });
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState("");
+
+  function submit() {
+    setError("");
+    startTransition(async () => {
+      try {
+        const po = await createPurchaseOrder(draft);
+        setPurchaseOrders([po, ...purchaseOrders]);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to create purchase order.");
+      }
+    });
+  }
+
+  return <AdminSection title="Purchase Orders" subtitle="Create purchase orders for items that need replenishment."><FormGrid><Input label="PO number" value={draft.id} onChange={(value) => setDraft({ ...draft, id: value })} /><Select label="Supplier" value={draft.supplierId} options={suppliers.map((supplier) => ({ label: supplier.name, value: supplier.id }))} onChange={(value) => setDraft({ ...draft, supplierId: value })} /><Select label="Product" value={draft.productId} options={products.map((product) => ({ label: `${product.sku} - ${product.name}`, value: product.id }))} onChange={(value) => setDraft({ ...draft, productId: value, unitCost: products.find((product) => product.id === value)?.cost ?? draft.unitCost })} /><Input label="Quantity" value={String(draft.quantity)} onChange={(value) => setDraft({ ...draft, quantity: Number(value) || 0 })} /><Input label="Unit cost" value={String(draft.unitCost)} onChange={(value) => setDraft({ ...draft, unitCost: Number(value) || 0 })} /><Input label="Expected date" value={draft.expectedDate} onChange={(value) => setDraft({ ...draft, expectedDate: value })} /></FormGrid><button className="mt-4 inline-flex h-10 items-center gap-2 rounded bg-moss px-4 text-sm font-semibold text-white disabled:opacity-60" disabled={isPending} onClick={submit} type="button"><Plus size={17} /> {isPending ? "Saving..." : "Create PO"}</button>{error && <p className="mt-3 rounded bg-clay/10 px-3 py-2 text-sm text-clay">{error}</p>}<div className="mt-6"><TransactionTable title="Purchase Orders" rows={purchaseOrders.map((po) => ({ id: po.id, party: supplierName(po.supplierId, suppliers), date: po.expectedDate, status: po.status, amount: po.lines.reduce((sum, line) => sum + line.quantity * line.unitCost, 0) }))} /></div></AdminSection>;
 }
 
-function ReceiptsAdmin({ movements, products }: { movements: StockMovement[]; products: Product[] }) {
-  return <AdminSection title="Goods Receipt" subtitle="Receiving stock posts positive inventory movements and closes PO quantities."><MovementsTable filter="Purchase Receipt" movements={movements} products={products} /></AdminSection>;
+function ReceiptsAdmin({ movements, setMovements, products }: { movements: StockMovement[]; setMovements: (movements: StockMovement[]) => void; products: Product[] }) {
+  const [draft, setDraft] = useState({ productId: products[0]?.id ?? "", quantity: 10, unitCost: products[0]?.cost ?? 0, reference: `GRN-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}` });
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState("");
+
+  function submit() {
+    setError("");
+    startTransition(async () => {
+      try {
+        const movement = await createStockReceipt(draft);
+        setMovements([movement, ...movements]);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to receive goods.");
+      }
+    });
+  }
+
+  return <AdminSection title="Goods Receipt" subtitle="Use this when items arrive. This posts a positive stock movement and increases on-hand stock using the receipt unit cost."><FormGrid><Select label="Product" value={draft.productId} options={products.map((product) => ({ label: `${product.sku} - ${product.name}`, value: product.id }))} onChange={(value) => setDraft({ ...draft, productId: value, unitCost: products.find((product) => product.id === value)?.cost ?? draft.unitCost })} /><Input label="Quantity received" value={String(draft.quantity)} onChange={(value) => setDraft({ ...draft, quantity: Number(value) || 0 })} /><Input label="Receipt unit cost" value={String(draft.unitCost)} onChange={(value) => setDraft({ ...draft, unitCost: Number(value) || 0 })} /><Input label="Receipt reference" value={draft.reference} onChange={(value) => setDraft({ ...draft, reference: value })} /></FormGrid><button className="mt-4 inline-flex h-10 items-center gap-2 rounded bg-moss px-4 text-sm font-semibold text-white disabled:opacity-60" disabled={isPending} onClick={submit} type="button"><PackageCheck size={17} /> {isPending ? "Posting..." : "Post receipt"}</button>{error && <p className="mt-3 rounded bg-clay/10 px-3 py-2 text-sm text-clay">{error}</p>}<div className="mt-6"><MovementsTable filter="Purchase Receipt" movements={movements} products={products} /></div></AdminSection>;
 }
 
-function SalesAdmin({ inventoryRows, sales }: { inventoryRows: InventoryRow[]; sales: ErpData["sales"] }) {
-  return <AdminSection title="Sales Orders" subtitle="Sales fulfillment validates stock availability and posts outbound movements."><TransactionTable title="Sales Orders" rows={sales.map((sale) => ({ id: sale.id, party: sale.customer, date: sale.date, status: sale.status, amount: sale.lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0) }))} /><div className="mt-6"><InventoryTable inventoryRows={inventoryRows} /></div></AdminSection>;
+function SalesAdmin({ inventoryRows, sales, setSales, products, movements, setMovements }: { inventoryRows: InventoryRow[]; sales: ErpData["sales"]; setSales: (sales: ErpData["sales"]) => void; products: Product[]; movements: StockMovement[]; setMovements: (movements: StockMovement[]) => void }) {
+  const [draft, setDraft] = useState({ id: `SO-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`, customer: "New Customer", productId: products[0]?.id ?? "", quantity: 1, unitPrice: products[0]?.price ?? 0 });
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState("");
+
+  function submit() {
+    setError("");
+    startTransition(async () => {
+      try {
+        const sale = await createSalesOrder(draft);
+        setSales([sale, ...sales]);
+        const valuation = valuationFor(draft.productId, movements);
+        setMovements([{ id: `local-${sale.id}`, date: sale.date, productId: draft.productId, type: "Sales Shipment", reference: sale.id, quantity: -draft.quantity, unitCost: valuation.averageCost }, ...movements]);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to create sales order.");
+      }
+    });
+  }
+
+  return <AdminSection title="Sales Orders" subtitle="Create a sales order. The app validates stock and posts a negative stock movement."><FormGrid><Input label="SO number" value={draft.id} onChange={(value) => setDraft({ ...draft, id: value })} /><Input label="Customer" value={draft.customer} onChange={(value) => setDraft({ ...draft, customer: value })} /><Select label="Product" value={draft.productId} options={products.map((product) => ({ label: `${product.sku} - ${product.name}`, value: product.id }))} onChange={(value) => setDraft({ ...draft, productId: value, unitPrice: products.find((product) => product.id === value)?.price ?? draft.unitPrice })} /><Input label="Quantity" value={String(draft.quantity)} onChange={(value) => setDraft({ ...draft, quantity: Number(value) || 0 })} /><Input label="Unit price" value={String(draft.unitPrice)} onChange={(value) => setDraft({ ...draft, unitPrice: Number(value) || 0 })} /></FormGrid><button className="mt-4 inline-flex h-10 items-center gap-2 rounded bg-moss px-4 text-sm font-semibold text-white disabled:opacity-60" disabled={isPending} onClick={submit} type="button"><ShoppingCart size={17} /> {isPending ? "Saving..." : "Create sale"}</button>{error && <p className="mt-3 rounded bg-clay/10 px-3 py-2 text-sm text-clay">{error}</p>}<div className="mt-6"><TransactionTable title="Sales Orders" rows={sales.map((sale) => ({ id: sale.id, party: sale.customer, date: sale.date, status: sale.status, amount: sale.lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0) }))} /></div><div className="mt-6"><InventoryTable inventoryRows={inventoryRows} /></div></AdminSection>;
 }
 
 function Reports({ inventoryRows, totals, movements, products }: { inventoryRows: InventoryRow[]; totals: Totals; movements: StockMovement[]; products: Product[] }) {
@@ -337,19 +413,23 @@ function Reports({ inventoryRows, totals, movements, products }: { inventoryRows
   );
 }
 
-type InventoryRow = Product & { stock: number; value: number; status: string };
+type InventoryRow = Product & { stock: number; value: number; averageCost: number; status: string };
 type Totals = { monthlyRevenue: number; inventoryValue: number; openPoValue: number; lowStockCount: number };
 
-function Header({ route, isAdmin, handleLogout, isLoggingOut }: { route: RouteKey; isAdmin: boolean; handleLogout: () => void; isLoggingOut: boolean }) {
+function Header({ route, isAdmin, handleLogout, isLoggingOut, mobileMenuOpen, setMobileMenuOpen }: { route: RouteKey; isAdmin: boolean; handleLogout: () => void; isLoggingOut: boolean; mobileMenuOpen: boolean; setMobileMenuOpen: (open: boolean) => void }) {
   const title = navItems.find((item) => item.key === route)?.label ?? "Dashboard";
   return (
     <header className="border-b border-ink/10 bg-white px-4 py-4 sm:px-6 lg:px-8">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <div><p className="text-sm font-semibold uppercase tracking-wider text-clay">{isAdmin ? "Admin workspace" : "Viewer workspace"}</p><h2 className="mt-1 text-3xl font-bold tracking-normal sm:text-4xl">{title}</h2></div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center"><label className="relative block min-w-0 sm:w-80"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-ink/40" size={18} /><input className="h-11 w-full rounded border border-ink/15 bg-paper pl-10 pr-3 text-sm outline-none focus:border-moss" placeholder="Search SKU, PO, supplier" /></label><button className="inline-flex h-11 items-center justify-center gap-2 rounded border border-ink/15 bg-white px-4 text-sm font-semibold hover:bg-ink/5 disabled:opacity-60 lg:hidden" disabled={isLoggingOut} onClick={handleLogout} type="button"><LogOut size={18} /> {isLoggingOut ? "Signing out..." : "Sign out"}</button></div>
+        <div className="flex items-start justify-between gap-3"><div><p className="text-sm font-semibold uppercase tracking-wider text-clay">{isAdmin ? "Admin workspace" : "Viewer workspace"}</p><h2 className="mt-1 text-3xl font-bold tracking-normal sm:text-4xl">{title}</h2></div><button className="inline-grid h-11 w-11 shrink-0 place-items-center rounded border border-ink/15 bg-paper lg:hidden" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} type="button" aria-label="Open menu">{mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}</button></div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center"><label className="relative block min-w-0 sm:w-80"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-ink/40" size={18} /><input className="h-11 w-full rounded border border-ink/15 bg-paper pl-10 pr-3 text-sm outline-none focus:border-moss" placeholder="Search SKU, PO, supplier" /></label><button className="hidden h-11 items-center justify-center gap-2 rounded border border-ink/15 bg-white px-4 text-sm font-semibold hover:bg-ink/5 disabled:opacity-60 sm:inline-flex lg:hidden" disabled={isLoggingOut} onClick={handleLogout} type="button"><LogOut size={18} /> {isLoggingOut ? "Signing out..." : "Sign out"}</button></div>
       </div>
     </header>
   );
+}
+
+function MobileNav({ visibleNav, route, setRoute, setMobileMenuOpen, session, handleLogout, isLoggingOut }: { visibleNav: typeof navItems; route: RouteKey; setRoute: (route: RouteKey) => void; setMobileMenuOpen: (open: boolean) => void; session: SessionUser; handleLogout: () => void; isLoggingOut: boolean }) {
+  return <div className="border-b border-ink/10 bg-white px-4 py-3 lg:hidden"><div className="grid gap-2 sm:grid-cols-2">{visibleNav.map((item) => <button className={`flex h-11 items-center gap-3 rounded px-3 text-left text-sm font-semibold ${route === item.key ? "bg-wheat text-ink" : "bg-paper text-ink/70"}`} key={item.key} onClick={() => { setRoute(item.key); setMobileMenuOpen(false); }} type="button"><item.icon size={18} />{item.label}</button>)}</div><div className="mt-3 flex flex-col gap-2 rounded border border-ink/10 bg-paper p-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-semibold">{session.name}</p><p className="text-xs capitalize text-ink/60">{session.role} access</p></div><button className="inline-flex h-10 items-center justify-center gap-2 rounded border border-ink/15 bg-white px-3 text-sm font-semibold disabled:opacity-60" disabled={isLoggingOut} onClick={handleLogout} type="button"><LogOut size={17} />{isLoggingOut ? "Signing out..." : "Sign out"}</button></div></div>;
 }
 
 function Brand() {
@@ -377,8 +457,26 @@ function ChartPanel({ title, subtitle, children }: { title: string; subtitle: st
   return <div className="rounded border border-ink/10 bg-white p-5 shadow-soft"><h3 className="text-lg font-bold">{title}</h3><p className="text-sm text-ink/60">{subtitle}</p><div className="mt-5 h-72">{children}</div></div>;
 }
 
-function InventoryTable({ inventoryRows }: { inventoryRows: InventoryRow[] }) {
-  return <TableShell title="Inventory Control" subtitle="Products, stock-on-hand, reorder status, and valuation."><table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-paper text-xs uppercase tracking-wider text-ink/50"><tr><th className="px-5 py-3">SKU</th><th className="px-5 py-3">Product</th><th className="px-5 py-3">Category</th><th className="px-5 py-3 text-right">Stock</th><th className="px-5 py-3 text-right">Reorder</th><th className="px-5 py-3 text-right">Value</th><th className="px-5 py-3">Status</th></tr></thead><tbody className="divide-y divide-ink/10">{inventoryRows.map((row) => <tr key={row.id} className="hover:bg-paper/70"><td className="px-5 py-4 font-mono text-xs text-ink/70">{row.sku}</td><td className="px-5 py-4 font-semibold">{row.name}</td><td className="px-5 py-4 text-ink/65">{row.category}</td><td className="px-5 py-4 text-right font-semibold">{row.stock}</td><td className="px-5 py-4 text-right text-ink/65">{row.reorderLevel}</td><td className="px-5 py-4 text-right">{money(row.value)}</td><td className="px-5 py-4"><StatusBadge status={row.status} /></td></tr>)}</tbody></table></TableShell>;
+function InventoryTable({ inventoryRows, editableReorder = false, products, setProducts }: { inventoryRows: InventoryRow[]; editableReorder?: boolean; products?: Product[]; setProducts?: (products: Product[]) => void }) {
+  return <TableShell title="Inventory Control" subtitle="Inventory Value uses weighted average cost from stock movements."><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-paper text-xs uppercase tracking-wider text-ink/50"><tr><th className="px-5 py-3">SKU</th><th className="px-5 py-3">Product</th><th className="px-5 py-3">Category</th><th className="px-5 py-3 text-right">Stock</th><th className="px-5 py-3 text-right">Reorder level</th><th className="px-5 py-3 text-right">Avg cost</th><th className="px-5 py-3 text-right">Inventory value</th><th className="px-5 py-3">Status</th>{editableReorder && <th className="px-5 py-3 text-right">Action</th>}</tr></thead><tbody className="divide-y divide-ink/10">{inventoryRows.map((row) => <InventoryRowItem key={row.id} row={row} editableReorder={editableReorder} products={products} setProducts={setProducts} />)}</tbody></table></TableShell>;
+}
+
+function InventoryRowItem({ row, editableReorder, products, setProducts }: { row: InventoryRow; editableReorder: boolean; products?: Product[]; setProducts?: (products: Product[]) => void }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [reorderLevel, setReorderLevel] = useState(String(row.reorderLevel));
+  const [isPending, startTransition] = useTransition();
+
+  function save() {
+    startTransition(async () => {
+      const updated = await updateProductReorderLevel({ productId: row.id, reorderLevel: Number(reorderLevel) || 0 });
+      if (products && setProducts) {
+        setProducts(products.map((product) => (product.id === updated.id ? updated : product)));
+      }
+      setIsEditing(false);
+    });
+  }
+
+  return <tr className="hover:bg-paper/70"><td className="px-5 py-4 font-mono text-xs text-ink/70">{row.sku}</td><td className="px-5 py-4 font-semibold">{row.name}</td><td className="px-5 py-4 text-ink/65">{row.category}</td><td className="px-5 py-4 text-right font-semibold">{row.stock}</td><td className="px-5 py-4 text-right text-ink/65">{isEditing ? <input className="h-9 w-24 rounded border border-ink/15 bg-white px-2 text-right outline-none focus:border-moss" value={reorderLevel} onChange={(event) => setReorderLevel(event.target.value)} /> : row.reorderLevel}</td><td className="px-5 py-4 text-right">{money(row.averageCost)}</td><td className="px-5 py-4 text-right">{money(row.value)}</td><td className="px-5 py-4"><StatusBadge status={row.status} /></td>{editableReorder && <td className="px-5 py-4 text-right">{isEditing ? <button className="inline-flex h-9 items-center gap-2 rounded bg-moss px-3 text-xs font-semibold text-white disabled:opacity-60" disabled={isPending} onClick={save} type="button"><Save size={14} />{isPending ? "Saving" : "Save"}</button> : <button className="inline-flex h-9 items-center gap-2 rounded border border-ink/15 bg-white px-3 text-xs font-semibold hover:bg-paper" onClick={() => setIsEditing(true)} type="button"><Edit3 size={14} />Edit</button>}</td>}</tr>;
 }
 
 function TransactionTable({ title, rows }: { title: string; rows: Array<{ id: string; party: string; date: string; status: string; amount: number }> }) {
@@ -387,7 +485,7 @@ function TransactionTable({ title, rows }: { title: string; rows: Array<{ id: st
 
 function MovementsTable({ filter, movements, products }: { filter?: string; movements: StockMovement[]; products: Product[] }) {
   const rows = filter ? movements.filter((movement) => movement.type === filter) : movements;
-  return <TableShell title="Stock Ledger" subtitle="Every stock change is auditable by product and reference."><table className="w-full min-w-[640px] text-left text-sm"><thead className="bg-paper text-xs uppercase tracking-wider text-ink/50"><tr><th className="px-5 py-3">Date</th><th className="px-5 py-3">Product</th><th className="px-5 py-3">Type</th><th className="px-5 py-3">Reference</th><th className="px-5 py-3 text-right">Qty</th></tr></thead><tbody className="divide-y divide-ink/10">{rows.map((row) => <tr key={row.id}><td className="px-5 py-4">{row.date}</td><td className="px-5 py-4 font-semibold">{productName(row.productId, products)}</td><td className="px-5 py-4">{row.type}</td><td className="px-5 py-4 font-mono text-xs">{row.reference}</td><td className={`px-5 py-4 text-right font-semibold ${row.quantity < 0 ? "text-clay" : "text-moss"}`}>{row.quantity}</td></tr>)}</tbody></table></TableShell>;
+  return <TableShell title="Stock Ledger" subtitle="Every movement carries a unit cost for weighted average valuation."><table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-paper text-xs uppercase tracking-wider text-ink/50"><tr><th className="px-5 py-3">Date</th><th className="px-5 py-3">Product</th><th className="px-5 py-3">Type</th><th className="px-5 py-3">Reference</th><th className="px-5 py-3 text-right">Qty</th><th className="px-5 py-3 text-right">Unit cost</th><th className="px-5 py-3 text-right">Movement value</th></tr></thead><tbody className="divide-y divide-ink/10">{rows.map((row) => <tr key={row.id}><td className="px-5 py-4">{row.date}</td><td className="px-5 py-4 font-semibold">{productName(row.productId, products)}</td><td className="px-5 py-4">{row.type}</td><td className="px-5 py-4 font-mono text-xs">{row.reference}</td><td className={`px-5 py-4 text-right font-semibold ${row.quantity < 0 ? "text-clay" : "text-moss"}`}>{row.quantity}</td><td className="px-5 py-4 text-right">{money(row.unitCost)}</td><td className={`px-5 py-4 text-right font-semibold ${row.quantity < 0 ? "text-clay" : "text-moss"}`}>{money(row.quantity * row.unitCost)}</td></tr>)}</tbody></table></TableShell>;
 }
 
 function WorkflowPanel() {
@@ -396,7 +494,11 @@ function WorkflowPanel() {
 }
 
 function SupplierPanel({ suppliers }: { suppliers: Supplier[] }) {
-  return <div className="rounded border border-ink/10 bg-white p-5 shadow-soft"><h3 className="text-lg font-bold">Supplier Health</h3><div className="mt-4 space-y-3">{suppliers.map((supplier) => <div className="rounded border border-ink/10 p-3" key={supplier.id}><div className="flex items-center justify-between gap-3"><p className="font-semibold">{supplier.name}</p><span className="text-sm font-bold text-moss">{supplier.reliability}%</span></div><p className="mt-1 text-sm text-ink/60">{supplier.contact} · {supplier.paymentTerms}</p></div>)}</div></div>;
+  return <div className="rounded border border-ink/10 bg-white p-5 shadow-soft"><h3 className="text-lg font-bold">Suppliers</h3><div className="mt-4 space-y-3">{suppliers.map((supplier) => <div className="rounded border border-ink/10 p-3" key={supplier.id}><p className="font-semibold">{supplier.name}</p><p className="mt-1 text-sm text-ink/60">{supplier.contact}</p><p className="mt-1 text-sm text-ink/60">{supplier.email}</p></div>)}</div></div>;
+}
+
+function InfoStrip({ title, text }: { title: string; text: string }) {
+  return <div className="mb-5 rounded border border-moss/20 bg-moss/5 p-4"><p className="text-sm font-bold text-moss">{title}</p><p className="mt-1 text-sm leading-6 text-ink/70">{text}</p></div>;
 }
 
 function AdminSection({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
@@ -415,6 +517,10 @@ function Input({ label, value, onChange }: { label: string; value: string; onCha
   return <label className="block text-sm font-semibold">{label}<input className="mt-2 h-10 w-full rounded border border-ink/15 bg-paper px-3 outline-none focus:border-moss" value={value} onChange={(event) => onChange(event.target.value)} /></label>;
 }
 
+function Select({ label, value, options, onChange }: { label: string; value: string; options: Array<{ label: string; value: string }>; onChange: (value: string) => void }) {
+  return <label className="block text-sm font-semibold">{label}<select className="mt-2 h-10 w-full rounded border border-ink/15 bg-paper px-3 outline-none focus:border-moss" value={value} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>;
+}
+
 function categoryTotals(inventoryRows: InventoryRow[]) {
   return inventoryRows.reduce<Array<{ category: string; value: number }>>((acc, row) => {
     const existing = acc.find((item) => item.category === row.category);
@@ -424,8 +530,16 @@ function categoryTotals(inventoryRows: InventoryRow[]) {
   }, []);
 }
 
-function stockFor(productId: string, movements: StockMovement[]) {
-  return movements.filter((movement) => movement.productId === productId).reduce((total, movement) => total + movement.quantity, 0);
+function valuationFor(productId: string, movements: StockMovement[]) {
+  const productMovements = movements.filter((movement) => movement.productId === productId);
+  const stock = productMovements.reduce((total, movement) => total + movement.quantity, 0);
+  const value = productMovements.reduce((total, movement) => total + movement.quantity * movement.unitCost, 0);
+
+  return {
+    stock,
+    value,
+    averageCost: stock > 0 ? value / stock : 0
+  };
 }
 
 function productName(productId: string, products: Product[]) {
@@ -434,4 +548,10 @@ function productName(productId: string, products: Product[]) {
 
 function supplierName(supplierId: string, suppliers: Supplier[]) {
   return suppliers.find((supplier) => supplier.id === supplierId)?.name ?? "Unknown supplier";
+}
+
+function statusRank(status: string) {
+  if (status === "Reorder") return 1;
+  if (status === "Watch") return 2;
+  return 3;
 }
