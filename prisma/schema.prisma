@@ -1,0 +1,115 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  ORDERED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+enum SalesOrderStatus {
+  CONFIRMED
+  PACKED
+  SHIPPED
+  CANCELLED
+}
+
+enum StockMovementType {
+  OPENING
+  PURCHASE_RECEIPT
+  SALES_SHIPMENT
+  ADJUSTMENT
+}
+
+model Product {
+  id           String              @id @default(cuid())
+  sku          String              @unique
+  name         String
+  category     String
+  unit         String
+  reorderLevel Int
+  cost         Decimal             @db.Decimal(12, 2)
+  price        Decimal             @db.Decimal(12, 2)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  purchaseLines PurchaseOrderLine[]
+  salesLines    SalesOrderLine[]
+  movements     StockMovement[]
+}
+
+model Supplier {
+  id            String          @id @default(cuid())
+  name          String
+  contact       String
+  email         String
+  paymentTerms  String
+  reliability   Int             @default(90)
+  purchaseOrders PurchaseOrder[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+}
+
+model PurchaseOrder {
+  id           String              @id
+  supplierId   String
+  supplier     Supplier            @relation(fields: [supplierId], references: [id])
+  status       PurchaseOrderStatus @default(DRAFT)
+  orderDate    DateTime
+  expectedDate DateTime
+  lines        PurchaseOrderLine[]
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+}
+
+model PurchaseOrderLine {
+  id              String        @id @default(cuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  productId       String
+  product         Product       @relation(fields: [productId], references: [id])
+  quantity        Int
+  unitCost        Decimal       @db.Decimal(12, 2)
+  received        Int           @default(0)
+}
+
+model SalesOrder {
+  id        String           @id
+  customer  String
+  date      DateTime
+  status    SalesOrderStatus @default(CONFIRMED)
+  lines     SalesOrderLine[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+}
+
+model SalesOrderLine {
+  id           String     @id @default(cuid())
+  salesOrderId String
+  salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  productId    String
+  product      Product    @relation(fields: [productId], references: [id])
+  quantity     Int
+  unitPrice    Decimal    @db.Decimal(12, 2)
+}
+
+model StockMovement {
+  id        String            @id @default(cuid())
+  date      DateTime
+  productId String
+  product   Product           @relation(fields: [productId], references: [id])
+  type      StockMovementType
+  reference String
+  quantity  Int
+  createdAt DateTime          @default(now())
+
+  @@index([productId, date])
+  @@index([reference])
+}
