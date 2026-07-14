@@ -46,6 +46,8 @@ Use one of these seeded accounts:
 | Admin | `admin@smarterp.test` | `admin123` | Dashboard, products, suppliers, purchase orders, goods receipt, sales, reports |
 | Viewer | `viewer@smarterp.test` | `viewer123` | Dashboard and reports only |
 
+The login uses Supabase Auth. The first successful login upserts a row into `UserProfile` so the app can resolve `ADMIN` vs `VIEWER` access from the database.
+
 ## How to use the demo
 
 1. Sign in as Admin to see the full ERP workspace.
@@ -59,9 +61,16 @@ Sign out and sign in as Viewer to verify the read-only experience. Viewer users 
 
 ## Current portfolio limits
 
-This version is connected to Supabase Postgres through Prisma. Product and supplier additions are saved to the database through Next.js Server Actions.
+This version is connected to Supabase Postgres through Prisma. Product and supplier additions are saved to the database through Next.js Server Actions. Those mutations call `requireAdmin()`, so a signed-in viewer cannot create master data even if they try to bypass the UI.
 
-The next production step is to replace the demo login with Supabase Auth and enforce authorization on the server, not only in the UI.
+The current auth is Supabase email/password via HTTP-only cookies. Before running after a schema change, push the role table and regenerate the client:
+
+```bash
+npx prisma db push
+npx prisma generate
+```
+
+For production, replace the hardcoded demo role mapping in `lib/auth.ts` with an admin-managed role assignment flow.
 
 ## Production direction
 

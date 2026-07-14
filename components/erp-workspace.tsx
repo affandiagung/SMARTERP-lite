@@ -20,7 +20,8 @@ import {
   UserRound
 } from "lucide-react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { createProduct, createSupplier } from "@/app/actions";
+import { createProduct, createSupplier, login, logout } from "@/app/actions";
+import type { SessionUser } from "@/lib/auth";
 import { money, type ErpData, type Product, type StockMovement, type Supplier } from "@/lib/erp";
 
 type Role = "admin" | "user";
@@ -49,8 +50,8 @@ const flowData = [
   { day: "Jul 14", receipts: 150, shipments: 76 }
 ];
 
-export default function ErpWorkspace({ initialData }: { initialData: ErpData }) {
-  const [session, setSession] = useState<{ name: string; role: Role } | null>(null);
+export default function ErpWorkspace({ initialData, initialUser }: { initialData: ErpData; initialUser: SessionUser | null }) {
+  const [session, setSession] = useState<SessionUser | null>(initialUser);
   const [loginMode, setLoginMode] = useState<Role>("admin");
   const [route, setRoute] = useState<RouteKey>("dashboard");
   const [products, setProducts] = useState<Product[]>(initialData.products);
@@ -59,6 +60,16 @@ export default function ErpWorkspace({ initialData }: { initialData: ErpData }) 
   const [sales] = useState(initialData.sales);
   const [movements] = useState(initialData.movements);
   const [message, setMessage] = useState("Use the demo credentials to enter the ERP workspace.");
+
+  function handleLogout() {
+    startLogoutTransition(async () => {
+      await logout();
+      setSession(null);
+      window.location.reload();
+    });
+  }
+
+  const [isLoggingOut, startLogoutTransition] = useTransition();
 
   const inventoryRows = useMemo(
     () =>
@@ -84,7 +95,7 @@ export default function ErpWorkspace({ initialData }: { initialData: ErpData }) 
   }, [inventoryRows]);
 
   if (!session) {
-    return <LoginScreen loginMode={loginMode} setLoginMode={setLoginMode} setSession={setSession} message={message} setMessage={setMessage} />;
+    return <LoginScreen loginMode={loginMode} setLoginMode={setLoginMode} message={message} setMessage={setMessage} />;
   }
 
   const isAdmin = session.role === "admin";
@@ -112,15 +123,15 @@ export default function ErpWorkspace({ initialData }: { initialData: ErpData }) 
             <p className="text-xs font-semibold uppercase tracking-wider text-ink/50">Signed in as</p>
             <p className="mt-2 font-semibold">{session.name}</p>
             <p className="text-sm capitalize text-ink/60">{session.role} access</p>
-            <button className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded border border-ink/15 bg-white text-sm font-semibold hover:bg-ink/5" onClick={() => setSession(null)} type="button">
+            <button className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded border border-ink/15 bg-white text-sm font-semibold hover:bg-ink/5 disabled:opacity-60" disabled={isLoggingOut} onClick={handleLogout} type="button">
               <LogOut size={17} />
-              Sign out
+              {isLoggingOut ? "Signing out..." : "Sign out"}
             </button>
           </div>
         </aside>
 
         <section className="min-w-0 flex-1">
-          <Header route={route} isAdmin={isAdmin} setSession={setSession} />
+          <Header route={route} isAdmin={isAdmin} handleLogout={handleLogout} isLoggingOut={isLoggingOut} />
           <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8">
             {!isAdmin && <ReadOnlyNotice />}
             {route === "dashboard" && <Dashboard inventoryRows={inventoryRows} totals={totals} suppliers={suppliers} />}
@@ -137,10 +148,11 @@ export default function ErpWorkspace({ initialData }: { initialData: ErpData }) 
   );
 }
 
-function LoginScreen({ loginMode, setLoginMode, setSession, message, setMessage }: { loginMode: Role; setLoginMode: (role: Role) => void; setSession: (session: { name: string; role: Role }) => void; message: string; setMessage: (message: string) => void }) {
+function LoginScreen({ loginMode, setLoginMode, message, setMessage }: { loginMode: Role; setLoginMode: (role: Role) => void; message: string; setMessage: (message: string) => void }) {
   const activeUser = demoUsers[loginMode];
   const [email, setEmail] = useState(activeUser.email);
   const [password, setPassword] = useState(activeUser.password);
+  const [isPending, startTransition] = useTransition();
 
   function switchRole(role: Role) {
     setLoginMode(role);
@@ -150,12 +162,15 @@ function LoginScreen({ loginMode, setLoginMode, setSession, message, setMessage 
   }
 
   function submit() {
-    const match = Object.values(demoUsers).find((user) => user.email === email && user.password === password);
-    if (!match) {
-      setMessage("Invalid demo credentials. Use one of the seeded accounts shown below.");
-      return;
-    }
-    setSession({ name: match.name, role: match.role });
+    setMessage("Signing in with Supabase Auth...");
+    startTransition(async () => {
+      try {
+        await login({ email, password });
+        window.location.reload();
+      } catch (err) {
+        setMessage(err instanceof Error ? err.message : "Login failed.");
+      }
+    });
   }
 
   return (
@@ -183,9 +198,9 @@ function LoginScreen({ loginMode, setLoginMode, setSession, message, setMessage 
               <input className="mt-2 h-11 w-full rounded border border-ink/15 bg-paper px-3 outline-none focus:border-moss" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
             </label>
             <p className="rounded bg-wheat px-3 py-2 text-sm text-ink/70">{message}</p>
-            <button className="inline-flex h-11 w-full items-center justify-center gap-2 rounded bg-moss px-4 text-sm font-semibold text-white hover:bg-fern" onClick={submit} type="button">
+            <button className="inline-flex h-11 w-full items-center justify-center gap-2 rounded bg-moss px-4 text-sm font-semibold text-white hover:bg-fern disabled:opacity-60" disabled={isPending} onClick={submit} type="button">
               <ShieldCheck size={18} />
-              Sign in to demo
+              {isPending ? "Signing in..." : "Sign in with Supabase"}
             </button>
           </div>
         </div>
@@ -325,13 +340,13 @@ function Reports({ inventoryRows, totals, movements, products }: { inventoryRows
 type InventoryRow = Product & { stock: number; value: number; status: string };
 type Totals = { monthlyRevenue: number; inventoryValue: number; openPoValue: number; lowStockCount: number };
 
-function Header({ route, isAdmin, setSession }: { route: RouteKey; isAdmin: boolean; setSession: (session: null) => void }) {
+function Header({ route, isAdmin, handleLogout, isLoggingOut }: { route: RouteKey; isAdmin: boolean; handleLogout: () => void; isLoggingOut: boolean }) {
   const title = navItems.find((item) => item.key === route)?.label ?? "Dashboard";
   return (
     <header className="border-b border-ink/10 bg-white px-4 py-4 sm:px-6 lg:px-8">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div><p className="text-sm font-semibold uppercase tracking-wider text-clay">{isAdmin ? "Admin workspace" : "Viewer workspace"}</p><h2 className="mt-1 text-3xl font-bold tracking-normal sm:text-4xl">{title}</h2></div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center"><label className="relative block min-w-0 sm:w-80"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-ink/40" size={18} /><input className="h-11 w-full rounded border border-ink/15 bg-paper pl-10 pr-3 text-sm outline-none focus:border-moss" placeholder="Search SKU, PO, supplier" /></label><button className="inline-flex h-11 items-center justify-center gap-2 rounded border border-ink/15 bg-white px-4 text-sm font-semibold hover:bg-ink/5 lg:hidden" onClick={() => setSession(null)} type="button"><LogOut size={18} /> Sign out</button></div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center"><label className="relative block min-w-0 sm:w-80"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-ink/40" size={18} /><input className="h-11 w-full rounded border border-ink/15 bg-paper pl-10 pr-3 text-sm outline-none focus:border-moss" placeholder="Search SKU, PO, supplier" /></label><button className="inline-flex h-11 items-center justify-center gap-2 rounded border border-ink/15 bg-white px-4 text-sm font-semibold hover:bg-ink/5 disabled:opacity-60 lg:hidden" disabled={isLoggingOut} onClick={handleLogout} type="button"><LogOut size={18} /> {isLoggingOut ? "Signing out..." : "Sign out"}</button></div>
       </div>
     </header>
   );

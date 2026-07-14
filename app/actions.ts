@@ -1,7 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
+import { requireAdmin, signInWithPassword, signOut } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 const productSchema = z.object({
@@ -23,6 +25,7 @@ const supplierSchema = z.object({
 });
 
 export async function createProduct(input: z.infer<typeof productSchema>) {
+  await requireAdmin();
   const data = productSchema.parse(input);
   const product = await prisma.product.create({ data });
   revalidatePath("/");
@@ -40,6 +43,7 @@ export async function createProduct(input: z.infer<typeof productSchema>) {
 }
 
 export async function createSupplier(input: z.infer<typeof supplierSchema>) {
+  await requireAdmin();
   const data = supplierSchema.parse(input);
   const supplier = await prisma.supplier.create({ data });
   revalidatePath("/");
@@ -52,4 +56,16 @@ export async function createSupplier(input: z.infer<typeof supplierSchema>) {
     paymentTerms: supplier.paymentTerms,
     reliability: supplier.reliability
   };
+}
+
+export async function login(input: { email: string; password: string }) {
+  const credentials = z.object({ email: z.string().email(), password: z.string().min(1) }).parse(input);
+  await signInWithPassword(credentials.email, credentials.password);
+  revalidatePath("/");
+}
+
+export async function logout() {
+  await signOut();
+  revalidatePath("/");
+  redirect("/");
 }
