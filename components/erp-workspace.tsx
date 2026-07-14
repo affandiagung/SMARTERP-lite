@@ -227,7 +227,7 @@ function Dashboard({ inventoryRows, totals, suppliers }: { inventoryRows: Invent
         <Metric title="July sales" value={money(totals.monthlyRevenue)} detail="Confirmed sales orders" icon={ShoppingCart} />
         <Metric title="Reorder alerts" value={String(totals.lowStockCount)} detail="Below configured threshold" icon={AlertTriangle} tone="warning" />
       </section>
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
+      <section className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
         <ChartPanel title="Stock Movement Flow" subtitle="Receipts and shipments over the last five operating days.">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={flowData} margin={{ left: -24, right: 8, top: 10, bottom: 0 }}>
@@ -252,9 +252,9 @@ function Dashboard({ inventoryRows, totals, suppliers }: { inventoryRows: Invent
           </ResponsiveContainer>
         </ChartPanel>
       </section>
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <InventoryTable inventoryRows={inventoryRows} />
-        <div className="space-y-6"><WorkflowPanel /><SupplierPanel suppliers={suppliers} /></div>
+      <section className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <div className="min-w-0"><InventoryTable inventoryRows={inventoryRows} /></div>
+        <div className="min-w-0 space-y-6"><WorkflowPanel /><SupplierPanel suppliers={suppliers} /></div>
       </section>
     </>
   );
@@ -431,7 +431,7 @@ function Reports({ inventoryRows, totals, movements, products }: { inventoryRows
   return (
     <>
       <section className="grid gap-4 md:grid-cols-3"><Metric title="Inventory report" value={money(totals.inventoryValue)} detail="Current valuation" icon={FileText} /><Metric title="Purchase report" value={money(totals.openPoValue)} detail="Open commitments" icon={ClipboardList} /><Metric title="Sales report" value={money(totals.monthlyRevenue)} detail="Month to date" icon={ShoppingCart} /></section>
-      <section className="grid gap-6 xl:grid-cols-2"><InventoryTable inventoryRows={inventoryRows} /><MovementsTable movements={movements} products={products} /></section>
+      <section className="grid min-w-0 gap-6 xl:grid-cols-2"><div className="min-w-0"><InventoryTable inventoryRows={inventoryRows} /></div><div className="min-w-0"><MovementsTable movements={movements} products={products} /></div></section>
     </>
   );
 }
@@ -477,7 +477,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function ChartPanel({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
-  return <div className="rounded border border-ink/10 bg-white p-5 shadow-soft"><h3 className="text-lg font-bold">{title}</h3><p className="text-sm text-ink/60">{subtitle}</p><div className="mt-5 h-72">{children}</div></div>;
+  return <div className="min-w-0 rounded border border-ink/10 bg-white p-4 shadow-soft sm:p-5"><h3 className="text-lg font-bold">{title}</h3><p className="text-sm text-ink/60">{subtitle}</p><div className="mt-5 h-72 min-w-0">{children}</div></div>;
 }
 
 function InventoryTable({ inventoryRows, editableReorder = false, products, setProducts }: { inventoryRows: InventoryRow[]; editableReorder?: boolean; products?: Product[]; setProducts?: (products: Product[]) => void }) {
@@ -541,11 +541,11 @@ function MovementsTable({ filter, movements, products }: { filter?: string; move
 
 function WorkflowPanel() {
   const steps = [{ label: "Create PO", detail: "Supplier, expected date, line items", icon: ClipboardList }, { label: "Receive goods", detail: "Partial receipt allowed per line", icon: Truck }, { label: "Post stock", detail: "Every receipt creates movement", icon: PackageCheck }, { label: "Fulfill sales", detail: "Shipment reduces available stock", icon: CheckCircle2 }];
-  return <div className="rounded border border-ink/10 bg-white p-5 shadow-soft"><h3 className="text-lg font-bold">Workflow Integrity</h3><p className="text-sm text-ink/60">The demo models stock as a ledger, so reports can be reconciled.</p><div className="mt-5 space-y-4">{steps.map((step, index) => <div className="flex gap-3" key={step.label}><div className="grid h-9 w-9 shrink-0 place-items-center rounded bg-wheat text-ink"><step.icon size={18} /></div><div className="min-w-0"><p className="font-semibold">{index + 1}. {step.label}</p><p className="text-sm text-ink/60">{step.detail}</p></div></div>)}</div></div>;
+  return <div className="min-w-0 rounded border border-ink/10 bg-white p-4 shadow-soft sm:p-5"><h3 className="text-lg font-bold">Workflow Integrity</h3><p className="text-sm text-ink/60">The demo models stock as a ledger, so reports can be reconciled.</p><div className="mt-5 space-y-4">{steps.map((step, index) => <div className="flex min-w-0 gap-3" key={step.label}><div className="grid h-9 w-9 shrink-0 place-items-center rounded bg-wheat text-ink"><step.icon size={18} /></div><div className="min-w-0"><p className="break-words font-semibold">{index + 1}. {step.label}</p><p className="break-words text-sm text-ink/60">{step.detail}</p></div></div>)}</div></div>;
 }
 
 function SupplierPanel({ suppliers }: { suppliers: Supplier[] }) {
-  return <div className="rounded border border-ink/10 bg-white p-5 shadow-soft"><h3 className="text-lg font-bold">Suppliers</h3><div className="mt-4 space-y-3">{suppliers.map((supplier) => <div className="rounded border border-ink/10 p-3" key={supplier.id}><p className="font-semibold">{supplier.name}</p><p className="mt-1 text-sm text-ink/60">{supplier.contact}</p><p className="mt-1 text-sm text-ink/60">{supplier.email}</p></div>)}</div></div>;
+  return <div className="min-w-0 rounded border border-ink/10 bg-white p-4 shadow-soft sm:p-5"><h3 className="text-lg font-bold">Suppliers</h3><div className="mt-4 space-y-3">{suppliers.map((supplier) => <div className="min-w-0 rounded border border-ink/10 p-3" key={supplier.id}><p className="break-words font-semibold">{supplier.name}</p><p className="mt-1 break-words text-sm text-ink/60">{supplier.contact}</p><p className="mt-1 break-all text-sm text-ink/60">{supplier.email}</p></div>)}</div></div>;
 }
 
 function InfoStrip({ title, text }: { title: string; text: string }) {
@@ -557,7 +557,7 @@ function AdminSection({ title, subtitle, children }: { title: string; subtitle: 
 }
 
 function TableShell({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
-  return <div className="rounded border border-ink/10 bg-white shadow-soft"><div className="border-b border-ink/10 p-5"><h3 className="text-lg font-bold">{title}</h3>{subtitle && <p className="text-sm text-ink/60">{subtitle}</p>}</div><div className="overflow-x-auto">{children}</div></div>;
+  return <div className="min-w-0 max-w-full rounded border border-ink/10 bg-white shadow-soft"><div className="border-b border-ink/10 p-4 sm:p-5"><h3 className="text-lg font-bold">{title}</h3>{subtitle && <p className="text-sm text-ink/60">{subtitle}</p>}</div><div className="max-w-full overflow-x-auto overscroll-x-contain">{children}</div></div>;
 }
 
 function FormGrid({ children }: { children: React.ReactNode }) {
